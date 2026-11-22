@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Ambientes virtuais
+venv/
+.venv/
+**/venv/
+
+# Bancos locais e arquivos temporarios do SQLite
+*.db
+*.sqlite
+*.sqlite3
+*.db-*
+*.sqlite-*
+*.sqlite3-*
+
+# Configuracoes e segredos locais
+.env
+.env.*
+
+# Versoes antigas completas do projeto
+Versoes/
