@@ -1,9 +1,12 @@
-from flask import Flask, render_template, request, redirect, url_for, make_response
+from flask import Flask, jsonify, render_template, request, redirect, url_for, make_response
 import sqlite3
 import os
 import base64
+import json
 import secrets
-from cryptography.exceptions import InvalidKey
+from cryptography.exceptions import InvalidKey, InvalidSignature
+from cryptography.hazmat.primitives import hashes, hmac as crypto_hmac
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 app = Flask(__name__)
@@ -56,7 +59,7 @@ def conectar_banco():
     return conn
 
 
-def criar_sessao(usuario_id):
+def criar_sessao(usuario_id, resposta=None):
     id_sessao = secrets.token_urlsafe(32)
     conn = conectar_banco()
     # Revoga a sessão atual deste navegador ao autenticar novamente.
@@ -70,12 +73,25 @@ def criar_sessao(usuario_id):
     conn.commit()
     conn.close()
 
-    resposta = make_response(redirect(url_for('pagina_usuario')))
+    if resposta is None:
+        resposta = make_response(redirect(url_for('pagina_usuario')))
     resposta.set_cookie(
         'session_id', id_sessao, httponly=True,
         secure=request.is_secure, samesite='Lax'
     )
     return resposta
+
+
+def autenticar_usuario(email, senha):
+    conn = conectar_banco()
+    usuario = conn.execute(
+        'SELECT id, senha_usuario FROM clientes WHERE email_usuario = ?',
+        (email.strip(),)
+    ).fetchone()
+    conn.close()
+    if usuario is None or not verificar_senha(senha, usuario['senha_usuario']):
+        return None
+    return usuario['id']
 
 @app.route("/", methods=["GET"])
 def home():
@@ -112,22 +128,55 @@ def login():
     if request.method == 'POST':
         email = request.form.get('email', '').strip()
         senha = request.form.get('password', '')
-        conn = conectar_banco()
-        usuario = conn.execute(
-            'SELECT id, senha_usuario FROM clientes WHERE email_usuario = ?',
-            (email,)
-        ).fetchone()
-        if usuario is None:
-            conn.close()
+        usuario_id = autenticar_usuario(email, senha)
+        if usuario_id is None:
             return 'E-mail ou senha incorretos.', 401
-
-        senha_valida = verificar_senha(senha, usuario['senha_usuario'])
-        conn.close()
-        if not senha_valida:
-            return 'E-mail ou senha incorretos.', 401
-        return criar_sessao(usuario['id'])
+        return criar_sessao(usuario_id)
     else:
         return redirect(url_for('home'))
+
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    try:
+        chaves = base64.b64decode(request.form['session_keys'], validate=True)
+        ciphertext = base64.b64decode(request.form['ciphertext'], validate=True)
+        tag = base64.b64decode(request.form['hmac'], validate=True)
+    except (KeyError, ValueError, TypeError):
+        return jsonify(erro='Requisição inválida.'), 400
+
+    if len(chaves) != 80 or len(tag) != 32:
+        return jsonify(erro='Requisição inválida.'), 400
+
+    aes_key = chaves[:32]
+    mac_key = chaves[32:64]
+    iv = chaves[64:80]
+
+    # A integridade do texto cifrado é verificada antes da descriptografia.
+    verificador = crypto_hmac.HMAC(mac_key, hashes.SHA256())
+    verificador.update(ciphertext)
+    try:
+        verificador.verify(tag)
+    except InvalidSignature:
+        return jsonify(erro='HMAC inválido.'), 400
+
+    try:
+        decryptor = Cipher(algorithms.AES(aes_key), modes.CTR(iv)).decryptor()
+        plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+        credenciais = json.loads(plaintext.decode('utf-8'))
+        email = credenciais['email']
+        senha = credenciais['password']
+        if not isinstance(email, str) or not isinstance(senha, str):
+            raise ValueError('Credenciais inválidas')
+    except (KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return jsonify(erro='Dados de login inválidos.'), 400
+
+    usuario_id = autenticar_usuario(email, senha)
+    if usuario_id is None:
+        return jsonify(erro='E-mail ou senha incorretos.'), 401
+
+    resposta = make_response(jsonify(mensagem='Login realizado com sucesso.'), 200)
+    return criar_sessao(usuario_id, resposta=resposta)
 
 
 @app.route('/usuario')
