@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f7f4">
+    <title>Criar conta — Forma</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="shell">
+        <section class="form-side" aria-labelledby="signup-title">
+            <h1 id="signup-title">Crie sua conta</h1>
+            <form action="/enviar" method="POST">
+                <div class="field">
+                    <label for="name">Nome completo</label>
+                    <input id="name" name="name" type="text" placeholder="Como podemos te chamar?" autocomplete="name">
+                </div>
+                <div class="field">
+                    <label for="email">E-mail</label>
+                    <input id="email" name="email" type="email" placeholder="voce@exemplo.com" autocomplete="email">
+                </div>
+                <div class="field">
+                    <label for="password">Senha</label>
+                    <input id="password" name="password" type="password" placeholder="Crie uma senha segura" autocomplete="new-password">
+                </div>
+                <button class="submit" type="submit">Criar minha conta <span aria-hidden="true">→</span></button>
+            </form>
+        </section>
+    </main>
+</body>
+</html>

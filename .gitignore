@@ -19,5 +19,3 @@ venv/
 .env
 .env.*
 
-# Versoes antigas completas do projeto
-Versoes/
